@@ -1,4 +1,4 @@
-# Conflict Analysis API
+# DockConflictDetector
 
 This project is a FastAPI application that detects conflicting statements in PDF documents. It uses Azure OpenAI service to analyze potential conflicts within PDF content.
 
@@ -14,7 +14,7 @@ This project is a FastAPI application that detects conflicting statements in PDF
 1. Clone the project:
 ```bash
 git clone <repository-url>
-cd ConflictAnalysis
+cd DockConflictDetector
 ```
 
 2. Create and activate virtual environment:
