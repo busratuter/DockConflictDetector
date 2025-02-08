@@ -1,9 +1,10 @@
 import os
 from fastapi import HTTPException
-from app.models import ConflictAnalysis, Conflict
+from app.models import ConflictAnalysis
 from openai import AzureOpenAI
 from dotenv import load_dotenv
-import openai
+import httpx
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 load_dotenv()
 
@@ -12,21 +13,28 @@ api_version = os.getenv("OPENAI_API_VERSION").strip()
 api_base = os.getenv("OPENAI_API_BASE").strip()
 deployment_name = os.getenv("OPENAI_DEPLOYMENT_NAME").strip()
 
-print(f"API Base: {api_base}")
-print(f"API Version: {api_version}")
-print(f"Deployment: {deployment_name}")
+http_client = httpx.Client(
+    timeout=60.0,  
+    verify=False,  
+    follow_redirects=True
+)
 
 client = AzureOpenAI(
     api_key=api_key,
     api_version=api_version,
-    azure_endpoint=api_base
+    azure_endpoint=api_base,
+    timeout=60.0,  
+    http_client=http_client,
+    max_retries=5  
 )
 
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=4, max=10),
+    retry=retry_if_exception_type((httpx.ConnectTimeout, httpx.ReadTimeout, ConnectionError, httpx.HTTPError))
+)
 def analyze_pdf_text(pdf_text: str) -> ConflictAnalysis:
     try:
-        print(f"Using deployment: {deployment_name}")
-        print(f"PDF text length: {len(pdf_text)}")
-
         tools = [{
             "type": "function",
             "function": {
@@ -53,7 +61,6 @@ def analyze_pdf_text(pdf_text: str) -> ConflictAnalysis:
             }
         }]
 
-        print("Making API request...")
         completion = client.chat.completions.create(
             model=deployment_name,
             messages=[
@@ -69,7 +76,6 @@ def analyze_pdf_text(pdf_text: str) -> ConflictAnalysis:
             tools=tools,
             tool_choice={"type": "function", "function": {"name": "analyze_conflicts"}}
         )
-        print("API request completed")
             
         tool_call = completion.choices[0].message.tool_calls[0]
         if tool_call.function.name == "analyze_conflicts":
@@ -80,11 +86,4 @@ def analyze_pdf_text(pdf_text: str) -> ConflictAnalysis:
         return ConflictAnalysis(conflicts=[])
 
     except Exception as e:
-        print(f"Hata detayı: {str(e)}")
-        print(f"Deployment name: {deployment_name}")
-        print(f"API Version: {api_version}")
-        print(f"API Base: {api_base}")
-        if hasattr(e, 'response'):
-            print(f"Response status: {e.response.status_code}")
-            print(f"Response text: {e.response.text}")
-        raise HTTPException(status_code=500, detail=f"OpenAI API hatası: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"OpenAI API error: {str(e)}")

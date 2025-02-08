@@ -5,6 +5,7 @@ from .openai_client import analyze_pdf_text
 
 app = FastAPI()
 
+# CORS ayarları
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -13,30 +14,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.post("/upload")
-async def upload_file(file: UploadFile = File(...)):
-    """
-    PDF dosyası yükleyip içeriğini analiz eder.
-    
-    - Sadece PDF dosyaları kabul edilir
-    - Dosya içeriği okunup OpenAI modeline gönderilir
-    - Analiz sonuçları döndürülür
-    """
+@app.post("/analyze")
+async def analyze_document(file: UploadFile = File(...)):
     try:
+        # Dosya içeriğini oku
         contents = await file.read()
         
-        if file.content_type != "application/pdf":
-            return {"error": "Sadece PDF dosyaları kabul edilmektedir."}
+        # PDF'den metin çıkarma
+        text = extract_text_from_pdf(contents)
         
-        pdf_text = extract_text_from_pdf(contents)
-        ai_response = analyze_pdf_text(pdf_text)
+        # OpenAI ile analiz
+        analysis = analyze_pdf_text(text)
         
-        return {
-            "filename": file.filename,
-            "content_type": file.content_type,
-            "file_size": len(contents),
-            "pdf_text": pdf_text,
-            "ai_analysis": ai_response
-        }
+        return {"analysis": analysis}
     except Exception as e:
-        return {"error": str(e)} 
+        from fastapi import HTTPException
+        raise HTTPException(status_code=500, detail=str(e)) 
